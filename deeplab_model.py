@@ -64,7 +64,7 @@ def create_sobel_filters(filter_shape):
   return sobel_filter_x.astype('float32'), sobel_filter_y.astype('float32')
 
 
-def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_training, psi_type=_PSI_ZERO, psi_param=1, depth=128):
+def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_training, psi_type=_PSI_ZERO, psi_param=1, depth=64):
   """Atrous Spatial Pyramid Pooling.
 
   Args:
@@ -83,7 +83,7 @@ def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_t
     if output_stride not in [8, 16]:
       raise ValueError('output_stride must be either 8 or 16.')
 
-    atrous_rates = [3, 6, 9]  # was [6, 12, 18]
+    atrous_rates = [2, 4, 6]  # was [6, 12, 18]
     if output_stride == 8:
       atrous_rates = [2*rate for rate in atrous_rates]
 
