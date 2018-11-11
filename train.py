@@ -83,8 +83,11 @@ parser.add_argument('--debug', action='store_true',
 parser.add_argument('--psi_type', type=str, default='ZERO',
                     help='Options: ZERO, ONES, GAUSSIAN, SOBEL')
 
-parser.add_argument('--psi_param', type=int, default=1,
-                    help='Scale if ONES, Sigma if GAUSSIAN.')
+parser.add_argument('--psi_param', type=float, default=1.0,
+                    help='Sigma if GAUSSIAN.')
+
+parser.add_argument('--psi_scale', type=float, default=1.0,
+                    help='Scale of PSI function.')
 
 _NUM_CLASSES = 21
 _HEIGHT = 513
@@ -248,7 +251,8 @@ def main(unused_argv):
           'freeze_batch_norm': FLAGS.freeze_batch_norm,
           'initial_global_step': FLAGS.initial_global_step,
           'psi_type': FLAGS.psi_type,
-          'psi_param': FLAGS.psi_param
+          'psi_param': FLAGS.psi_param,
+          'psi_scale': FLAGS.psi_scale
       })
 
   for _ in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):

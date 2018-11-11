@@ -24,7 +24,7 @@ _PSI_SOBEL='SOBEL'
 
 # Basic Gaussian filter generator function
 # TODO remove extraneous variables
-def create_gaussian_filter(sigma, filter_shape):
+def create_gaussian_filter(sigma, filter_shape, scale):
   filter_x_min = -np.floor(filter_shape[0]/2)
   filter_x_max = np.ceil(filter_shape[0]/2)
   filter_y_min = -np.floor(filter_shape[1]/2)
@@ -33,7 +33,7 @@ def create_gaussian_filter(sigma, filter_shape):
   gaussian_filter = np.zeros(gaussian_x.shape[0:2])
   for ix in range(0, gaussian_x.shape[0]):
     for iy in range(0, gaussian_x.shape[1]):
-      gaussian_filter[ix, iy] = np.exp(-(gaussian_x[ix, iy]**2 + gaussian_y[ix, iy]**2) / (2 * sigma)) / (2 * np.pi * sigma**2)
+      gaussian_filter[ix, iy] = scale * np.exp(-(gaussian_x[ix, iy]**2 + gaussian_y[ix, iy]**2) / (2 * sigma)) / (2 * np.pi * sigma**2)
   gaussian_filter = np.repeat(gaussian_filter[:, :, np.newaxis], filter_shape[2], axis=2)
   gaussian_filter = np.repeat(gaussian_filter[:, :, :, np.newaxis], filter_shape[3], axis=3)
   return gaussian_filter.astype('float32')
@@ -41,7 +41,7 @@ def create_gaussian_filter(sigma, filter_shape):
 
 # Basic Sobel filter generator function
 # TODO remove extraneous variables
-def create_sobel_filters(filter_shape):
+def create_sobel_filters(filter_shape, scale):
   filter_x_min = -np.floor(filter_shape[0]/2)
   filter_x_max = np.ceil(filter_shape[0]/2)
   filter_y_min = -np.floor(filter_shape[1]/2)
@@ -55,8 +55,8 @@ def create_sobel_filters(filter_shape):
         sobel_filter_x[ix, iy] = 0
         sobel_filter_y[ix, iy] = 0
       else:
-        sobel_filter_x[ix, iy] = sobel_x[ix, iy] / (sobel_x[ix, iy] ** 2 + sobel_y[ix, iy] ** 2)
-        sobel_filter_y[ix, iy] = sobel_y[ix, iy] / (sobel_x[ix, iy] ** 2 + sobel_y[ix, iy] ** 2)
+        sobel_filter_x[ix, iy] = scale * sobel_x[ix, iy] / (sobel_x[ix, iy] ** 2 + sobel_y[ix, iy] ** 2)
+        sobel_filter_y[ix, iy] = scale * sobel_y[ix, iy] / (sobel_x[ix, iy] ** 2 + sobel_y[ix, iy] ** 2)
   sobel_filter_x = np.repeat(sobel_filter_x[:, :, np.newaxis], filter_shape[2], axis=2)
   sobel_filter_x = np.repeat(sobel_filter_x[:, :, :, np.newaxis], filter_shape[3], axis=3)
   sobel_filter_y = np.repeat(sobel_filter_y[:, :, np.newaxis], filter_shape[2], axis=2)
@@ -64,7 +64,7 @@ def create_sobel_filters(filter_shape):
   return sobel_filter_x.astype('float32'), sobel_filter_y.astype('float32')
 
 
-def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_training, psi_type=_PSI_ZERO, psi_param=1, depth=64):
+def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_training, psi_type=_PSI_ZERO, psi_param=1, psi_scale=1.0, depth=64):
   """Atrous Spatial Pyramid Pooling.
 
   Args:
@@ -111,19 +111,19 @@ def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_t
           filter_3 = np.zeros(kernel_shape_3, dtype=np.float32)
 
         elif psi_type == _PSI_ONES:
-          filter_1 = psi_param * np.ones(kernel_shape_1, dtype=np.float32)
-          filter_2 = psi_param * np.ones(kernel_shape_2, dtype=np.float32)
-          filter_3 = psi_param * np.ones(kernel_shape_3, dtype=np.float32)
+          filter_1 = psi_scale * np.ones(kernel_shape_1, dtype=np.float32)
+          filter_2 = psi_scale * np.ones(kernel_shape_2, dtype=np.float32)
+          filter_3 = psi_scale * np.ones(kernel_shape_3, dtype=np.float32)
 
         elif psi_type == _PSI_GAUSSIAN:
-          filter_1 = create_gaussian_filter(psi_param, kernel_shape_1)
-          filter_2 = create_gaussian_filter(psi_param * atrous_rates[1] / atrous_rates[0], kernel_shape_2)
-          filter_3 = create_gaussian_filter(psi_param * atrous_rates[2] / atrous_rates[1], kernel_shape_3)
+          filter_1 = create_gaussian_filter(psi_param, kernel_shape_1, psi_scale)
+          filter_2 = create_gaussian_filter(psi_param * atrous_rates[1] / atrous_rates[0], kernel_shape_2, psi_scale)
+          filter_3 = create_gaussian_filter(psi_param * atrous_rates[2] / atrous_rates[1], kernel_shape_3, psi_scale)
 
         elif psi_type == _PSI_SOBEL:
-          filter_1_x, filter_1_y = create_sobel_filters(kernel_shape_1)
-          filter_2_x, filter_2_y = create_sobel_filters(kernel_shape_2)
-          filter_3_x, filter_3_y = create_sobel_filters(kernel_shape_3)
+          filter_1_x, filter_1_y = create_sobel_filters(kernel_shape_1, psi_scale)
+          filter_2_x, filter_2_y = create_sobel_filters(kernel_shape_2, psi_scale)
+          filter_3_x, filter_3_y = create_sobel_filters(kernel_shape_3, psi_scale)
 
         if psi_type != _PSI_SOBEL:
           filter_1 = tf.constant(filter_1)
@@ -179,6 +179,7 @@ def deeplab_v3_plus_generator(num_classes,
                               batch_norm_decay,
                               psi_type,
                               psi_param,
+                              psi_scale,
                               data_format='channels_last'):
   """Generator for DeepLab v3 plus models.
 
@@ -239,7 +240,7 @@ def deeplab_v3_plus_generator(num_classes,
 
     inputs_size = tf.shape(inputs)[1:3]
     net = end_points[base_architecture + '/block4']
-    encoder_output = atrous_spatial_pyramid_pooling(net, output_stride, batch_norm_decay, is_training, psi_type, psi_param)
+    encoder_output = atrous_spatial_pyramid_pooling(net, output_stride, batch_norm_decay, is_training, psi_type, psi_param, psi_scale)
 
     with tf.variable_scope("decoder"):
       with tf.contrib.slim.arg_scope(resnet_v2.resnet_arg_scope(batch_norm_decay=batch_norm_decay)):
@@ -278,7 +279,8 @@ def deeplabv3_plus_model_fn(features, labels, mode, params):
                                       params['pre_trained_model'],
                                       params['batch_norm_decay'],
                                       params['psi_type'],
-                                      params['psi_param'])
+                                      params['psi_param'],
+                                      params['psi_scale'])
 
   logits = network(features, mode == tf.estimator.ModeKeys.TRAIN)
 
