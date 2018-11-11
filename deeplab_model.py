@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np
 
 from tensorflow.contrib.slim.nets import resnet_v2
 from tensorflow.contrib import layers as layers_lib
@@ -16,8 +17,54 @@ from utils import preprocessing
 _BATCH_NORM_DECAY = 0.9997
 _WEIGHT_DECAY = 5e-4
 
+_PSI_ZERO='ZERO'
+_PSI_ONES='ONES'
+_PSI_GAUSSIAN='GAUSSIAN'
+_PSI_SOBEL='SOBEL'
 
-def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_training, depth=256):
+# Basic Gaussian filter generator function
+# TODO remove extraneous variables
+def create_gaussian_filter(sigma, filter_shape):
+  filter_x_min = -np.floor(filter_shape[0]/2)
+  filter_x_max = np.ceil(filter_shape[0]/2)
+  filter_y_min = -np.floor(filter_shape[1]/2)
+  filter_y_max = np.ceil(filter_shape[1]/2)
+  gaussian_x, gaussian_y = np.mgrid[filter_x_min:filter_x_max, filter_y_min:filter_y_max]
+  gaussian_filter = np.zeros(gaussian_x.shape[0:2])
+  for ix in range(0, gaussian_x.shape[0]):
+    for iy in range(0, gaussian_x.shape[1]):
+      gaussian_filter[ix, iy] = np.exp(-(gaussian_x[ix, iy]**2 + gaussian_y[ix, iy]**2) / (2 * sigma)) / (2 * np.pi * sigma**2)
+  gaussian_filter = np.repeat(gaussian_filter[:, :, np.newaxis], filter_shape[2], axis=2)
+  gaussian_filter = np.repeat(gaussian_filter[:, :, :, np.newaxis], filter_shape[3], axis=3)
+  return gaussian_filter.astype('float32')
+
+
+# Basic Sobel filter generator function
+# TODO remove extraneous variables
+def create_sobel_filters(filter_shape):
+  filter_x_min = -np.floor(filter_shape[0]/2)
+  filter_x_max = np.ceil(filter_shape[0]/2)
+  filter_y_min = -np.floor(filter_shape[1]/2)
+  filter_y_max = np.ceil(filter_shape[1]/2)
+  sobel_x, sobel_y = np.mgrid[filter_x_min:filter_x_max, filter_y_min:filter_y_max]
+  sobel_filter_x = np.zeros(sobel_x.shape[0:2])
+  sobel_filter_y = np.zeros(sobel_y.shape[0:2])
+  for ix in range(0, sobel_x.shape[0]):
+    for iy in range(0, sobel_x.shape[1]):
+      if sobel_x[ix, iy] == 0 and sobel_y[ix, iy] == 0:
+        sobel_filter_x[ix, iy] = 0
+        sobel_filter_y[ix, iy] = 0
+      else:
+        sobel_filter_x[ix, iy] = sobel_x[ix, iy] / (sobel_x[ix, iy] ** 2 + sobel_y[ix, iy] ** 2)
+        sobel_filter_y[ix, iy] = sobel_y[ix, iy] / (sobel_x[ix, iy] ** 2 + sobel_y[ix, iy] ** 2)
+  sobel_filter_x = np.repeat(sobel_filter_x[:, :, np.newaxis], filter_shape[2], axis=2)
+  sobel_filter_x = np.repeat(sobel_filter_x[:, :, :, np.newaxis], filter_shape[3], axis=3)
+  sobel_filter_y = np.repeat(sobel_filter_y[:, :, np.newaxis], filter_shape[2], axis=2)
+  sobel_filter_y = np.repeat(sobel_filter_y[:, :, :, np.newaxis], filter_shape[3], axis=3)
+  return sobel_filter_x.astype('float32'), sobel_filter_y.astype('float32')
+
+
+def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_training, psi_type=_PSI_ZERO, psi_param=1, depth=128):
   """Atrous Spatial Pyramid Pooling.
 
   Args:
@@ -36,7 +83,7 @@ def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_t
     if output_stride not in [8, 16]:
       raise ValueError('output_stride must be either 8 or 16.')
 
-    atrous_rates = [6, 12, 18]
+    atrous_rates = [3, 6, 9]  # was [6, 12, 18]
     if output_stride == 8:
       atrous_rates = [2*rate for rate in atrous_rates]
 
@@ -49,6 +96,66 @@ def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_t
         conv_3x3_1 = layers_lib.conv2d(inputs, depth, [3, 3], stride=1, rate=atrous_rates[0], scope='conv_3x3_1')
         conv_3x3_2 = layers_lib.conv2d(inputs, depth, [3, 3], stride=1, rate=atrous_rates[1], scope='conv_3x3_2')
         conv_3x3_3 = layers_lib.conv2d(inputs, depth, [3, 3], stride=1, rate=atrous_rates[2], scope='conv_3x3_3')
+
+        # Apply the psi-atrous-convolution
+        kernel_shape_1 = (1 + 2 * atrous_rates[0], 1 + 2 * atrous_rates[0], inputs.get_shape().as_list()[3], depth)
+        kernel_shape_2 = (1 + 2 * atrous_rates[1], 1 + 2 * atrous_rates[1], inputs.get_shape().as_list()[3], depth)
+        kernel_shape_3 = (1 + 2 * atrous_rates[2], 1 + 2 * atrous_rates[2], inputs.get_shape().as_list()[3], depth)
+
+        print("PSI Type: " + psi_type)
+        print("PSI Param: " + str(psi_param))
+        print(kernel_shape_1)
+        if psi_type == _PSI_ZERO:
+          filter_1 = np.zeros(kernel_shape_1, dtype=np.float32)
+          filter_2 = np.zeros(kernel_shape_2, dtype=np.float32)
+          filter_3 = np.zeros(kernel_shape_3, dtype=np.float32)
+
+        elif psi_type == _PSI_ONES:
+          filter_1 = psi_param * np.ones(kernel_shape_1, dtype=np.float32)
+          filter_2 = psi_param * np.ones(kernel_shape_2, dtype=np.float32)
+          filter_3 = psi_param * np.ones(kernel_shape_3, dtype=np.float32)
+
+        elif psi_type == _PSI_GAUSSIAN:
+          filter_1 = create_gaussian_filter(psi_param, kernel_shape_1)
+          filter_2 = create_gaussian_filter(psi_param * atrous_rates[1] / atrous_rates[0], kernel_shape_2)
+          filter_3 = create_gaussian_filter(psi_param * atrous_rates[2] / atrous_rates[1], kernel_shape_3)
+
+        elif psi_type == _PSI_SOBEL:
+          filter_1_x, filter_1_y = create_sobel_filters(kernel_shape_1)
+          filter_2_x, filter_2_y = create_sobel_filters(kernel_shape_2)
+          filter_3_x, filter_3_y = create_sobel_filters(kernel_shape_3)
+
+        if psi_type != _PSI_SOBEL:
+          filter_1 = tf.constant(filter_1)
+          trans_1 = tf.nn.convolution(inputs, filter_1, "SAME")
+          conv_3x3_1 = tf.math.add(conv_3x3_1, trans_1)
+
+          filter_2 = tf.constant(filter_2)
+          trans_2 = tf.nn.convolution(inputs, filter_2, "SAME")
+          conv_3x3_2 = tf.math.add(conv_3x3_2, trans_2)
+
+          filter_3 = tf.constant(filter_3)
+          trans_3 = tf.nn.convolution(inputs, filter_3, "SAME")
+          conv_3x3_3 = tf.math.add(conv_3x3_3, trans_3)
+        else:
+          filter_1_x = tf.constant(filter_1_x)
+          trans_1_x = tf.nn.convolution(inputs, filter_1_x, "SAME")
+          filter_1_y = tf.constant(filter_1_y)
+          trans_1_y = tf.nn.convolution(inputs, filter_1_y, "SAME")
+          conv_3x3_1 = tf.math.add(tf.math.add(conv_3x3_1, trans_1_x), trans_1_y)
+
+          filter_2_x = tf.constant(filter_2_x)
+          trans_2_x = tf.nn.convolution(inputs, filter_2_x, "SAME")
+          filter_2_y = tf.constant(filter_2_y)
+          trans_2_y = tf.nn.convolution(inputs, filter_2_y, "SAME")
+          conv_3x3_2 = tf.math.add(tf.math.add(conv_3x3_2, trans_2_x), trans_2_y)
+
+          filter_3_x = tf.constant(filter_3_x)
+          trans_3_x = tf.nn.convolution(inputs, filter_3_x, "SAME")
+          filter_3_y = tf.constant(filter_3_y)
+          trans_3_y = tf.nn.convolution(inputs, filter_3_y, "SAME")
+          conv_3x3_3 = tf.math.add(tf.math.add(conv_3x3_3, trans_3_x), trans_3_y)
+
 
         # (b) the image-level features
         with tf.variable_scope("image_level_features"):
@@ -70,6 +177,8 @@ def deeplab_v3_plus_generator(num_classes,
                               base_architecture,
                               pre_trained_model,
                               batch_norm_decay,
+                              psi_type,
+                              psi_param,
                               data_format='channels_last'):
   """Generator for DeepLab v3 plus models.
 
@@ -130,7 +239,7 @@ def deeplab_v3_plus_generator(num_classes,
 
     inputs_size = tf.shape(inputs)[1:3]
     net = end_points[base_architecture + '/block4']
-    encoder_output = atrous_spatial_pyramid_pooling(net, output_stride, batch_norm_decay, is_training)
+    encoder_output = atrous_spatial_pyramid_pooling(net, output_stride, batch_norm_decay, is_training, psi_type, psi_param)
 
     with tf.variable_scope("decoder"):
       with tf.contrib.slim.arg_scope(resnet_v2.resnet_arg_scope(batch_norm_decay=batch_norm_decay)):
@@ -167,7 +276,9 @@ def deeplabv3_plus_model_fn(features, labels, mode, params):
                                       params['output_stride'],
                                       params['base_architecture'],
                                       params['pre_trained_model'],
-                                      params['batch_norm_decay'])
+                                      params['batch_norm_decay'],
+                                      params['psi_type'],
+                                      params['psi_param'])
 
   logits = network(features, mode == tf.estimator.ModeKeys.TRAIN)
 

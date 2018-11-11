@@ -80,6 +80,12 @@ parser.add_argument('--weight_decay', type=float, default=2e-4,
 parser.add_argument('--debug', action='store_true',
                     help='Whether to use debugger to track down bad values during training.')
 
+parser.add_argument('--psi_type', type=str, default='ZERO',
+                    help='Options: ZERO, ONES, GAUSSIAN, SOBEL')
+
+parser.add_argument('--psi_param', type=int, default=1,
+                    help='Scale if ONES, Sigma if GAUSSIAN.')
+
 _NUM_CLASSES = 21
 _HEIGHT = 513
 _WIDTH = 513
@@ -240,7 +246,9 @@ def main(unused_argv):
           'power': _POWER,
           'momentum': _MOMENTUM,
           'freeze_batch_norm': FLAGS.freeze_batch_norm,
-          'initial_global_step': FLAGS.initial_global_step
+          'initial_global_step': FLAGS.initial_global_step,
+          'psi_type': FLAGS.psi_type,
+          'psi_param': FLAGS.psi_param
       })
 
   for _ in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
