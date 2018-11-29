@@ -22,6 +22,7 @@ _PSI_ONES='ONES'
 _PSI_GAUSSIAN='GAUSSIAN'
 _PSI_SOBEL='SOBEL'
 _PSI_LANCZOS='LANCZOS'
+_PSI_LAPLACIAN_OF_GAUSSIAN='LAPLACIAN_OF_GAUSSIAN'
 
 # Basic Gaussian filter generator function
 # TODO remove extraneous variables
@@ -161,6 +162,10 @@ def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_t
           filter_2_x, filter_2_y = create_lanczos_filter(psi_param, kernel_shape_2, psi_scale)
           filter_3_x, filter_3_y = create_lanczos_filter(psi_param, kernel_shape_3, psi_scale)
 
+        elif psi_type == _PSI_LAPLACIAN_OF_GAUSSIAN:
+          filter_1_x, filter_1_y = create_laplacian_of_gaussian(psi_param, kernel_shape_1, psi_scale)
+          filter_2_x, filter_2_y = create_laplacian_of_gaussian(psi_param, kernel_shape_2, psi_scale)
+          filter_3_x, filter_3_y = create_laplacian_of_gaussian(psi_param, kernel_shape_3, psi_scale)
 
         if psi_type != _PSI_SOBEL:
           filter_1 = tf.constant(filter_1)
