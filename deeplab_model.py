@@ -21,6 +21,7 @@ _PSI_ZERO='ZERO'
 _PSI_ONES='ONES'
 _PSI_GAUSSIAN='GAUSSIAN'
 _PSI_SOBEL='SOBEL'
+_PSI_LANCZOS='LANCZOS'
 
 # Basic Gaussian filter generator function
 # TODO remove extraneous variables
@@ -62,6 +63,36 @@ def create_sobel_filters(filter_shape, scale):
   sobel_filter_y = np.repeat(sobel_filter_y[:, :, np.newaxis], filter_shape[2], axis=2)
   sobel_filter_y = np.repeat(sobel_filter_y[:, :, :, np.newaxis], filter_shape[3], axis=3)
   return sobel_filter_x.astype('float32'), sobel_filter_y.astype('float32')
+
+# Basic Lanczos filter generator function
+def create_lanczos_filter(a, filter_shape, scale):
+  num_samples_in_direction = filter_shape[0]
+  lanczos_domain = np.linspace(-a, a, num_samples_in_direction + 2, endpoint=True)[1:-1]
+  lanczos_filter = np.zeros(filter_shape[:2])
+  for i in range(len(lanczos_domain)):
+    for j in range(len(lanczos_domain)):
+      lanczos_filter[i, j] = scale * np.sinc(lanczos_domain[i]) * np.sinc(lanczos_domain[j]) \
+        * np.sinc(lanczos_domain[i]/a) * np.sinc(lanczos_domain[j]/a)
+  lanczos_filter = np.repeat(lanczos_filter[:, :, np.newaxis], filter_shape[2], axis=2)
+  lanczos_filter = np.repeat(lanczos_filter[:, :, :, np.newaxis], filter_shape[3], axis=3)
+  return lanczos_filter.astype('float32')
+
+
+# Rescaled Laplacian-of-Gaussian filter creation (removed 1/(np.pi * sigma**4) scaling factor)
+# See https://homepages.inf.ed.ac.uk/rbf/HIPR2/log.htm
+def create_laplacian_of_gaussian(sigma, filter_shape, scale):
+  filter_x_min = -np.floor(filter_shape[0]/2)
+  filter_x_max = np.ceil(filter_shape[0]/2)
+  filter_y_min = -np.floor(filter_shape[1]/2)
+  filter_y_max = np.ceil(filter_shape[1]/2)
+  lap_of_gaus_x, lap_of_gaus_y = np.mgrid[filter_x_min:filter_x_max, filter_y_min:filter_y_max]
+  lap_of_gaus_filter = np.zeros(filter_shape[0:2])
+  for ix in range(0, lap_of_gaus_x.shape[0]):
+    for iy in range(0, lap_of_gaus_y.shape[0]):
+      lap_of_gaus_filter[ix, iy] = scale * (1-(lap_of_gaus_x[ix, iy]**2 + lap_of_gaus_y[ix, iy]**2)/(2*sigma**2)) * np.exp(-(lap_of_gaus_x[ix, iy]**2 + lap_of_gaus_y[ix, iy]**2) / (2 * sigma**2)) / (-1)
+  lap_of_gaus_filter = np.repeat(lap_of_gaus_filter[:, :, np.newaxis], filter_shape[2], axis=2)
+  lap_of_gaus_filter = np.repeat(lap_of_gaus_filter[:, :, :, np.newaxis], filter_shape[3], axis=3)
+  return lap_of_gaus_filter.astype('float32')
 
 
 def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_training, psi_type=_PSI_ZERO, psi_param=1, psi_scale=1.0, depth=64):
@@ -124,6 +155,12 @@ def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_t
           filter_1_x, filter_1_y = create_sobel_filters(kernel_shape_1, psi_scale)
           filter_2_x, filter_2_y = create_sobel_filters(kernel_shape_2, psi_scale)
           filter_3_x, filter_3_y = create_sobel_filters(kernel_shape_3, psi_scale)
+
+        elif psi_type == _PSI_LANCZOS:
+          filter_1_x, filter_1_y = create_lanczos_filter(psi_param, kernel_shape_1, psi_scale)
+          filter_2_x, filter_2_y = create_lanczos_filter(psi_param, kernel_shape_2, psi_scale)
+          filter_3_x, filter_3_y = create_lanczos_filter(psi_param, kernel_shape_3, psi_scale)
+
 
         if psi_type != _PSI_SOBEL:
           filter_1 = tf.constant(filter_1)
