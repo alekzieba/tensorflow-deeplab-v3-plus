@@ -115,7 +115,7 @@ def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_t
     if output_stride not in [8, 16]:
       raise ValueError('output_stride must be either 8 or 16.')
 
-    atrous_rates = [6, 12, 18]  # was [6, 12, 18]
+    atrous_rates = [6, 10, 14]  # was [6, 12, 18]
     if output_stride == 8:
       atrous_rates = [2*rate for rate in atrous_rates]
 
