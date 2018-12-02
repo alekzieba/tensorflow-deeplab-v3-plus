@@ -164,8 +164,8 @@ def atrous_spatial_pyramid_pooling(inputs, output_stride, batch_norm_decay, is_t
 
         elif psi_type == _PSI_LAPLACIAN_OF_GAUSSIAN:
           filter_1 = create_laplacian_of_gaussian(psi_param, kernel_shape_1, psi_scale)
-          filter_2 = create_laplacian_of_gaussian(psi_param, kernel_shape_2, psi_scale)
-          filter_3 = create_laplacian_of_gaussian(psi_param, kernel_shape_3, psi_scale)
+          filter_2 = create_laplacian_of_gaussian(psi_param * atrous_rates[1] / atrous_rates[0], kernel_shape_2, psi_scale)
+          filter_3 = create_laplacian_of_gaussian(psi_param * atrous_rates[2] / atrous_rates[1], kernel_shape_3, psi_scale)
 
         if psi_type != _PSI_SOBEL:
           filter_1 = tf.constant(filter_1)
