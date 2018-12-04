@@ -46,6 +46,15 @@ parser.add_argument('--output_stride', type=int, default=16,
 parser.add_argument('--debug', action='store_true',
                     help='Whether to use debugger to track down bad values during training.')
 
+parser.add_argument('--psi_type', type=str, default='ZERO',
+                    help='Options: ZERO, ONES, GAUSSIAN, SOBEL')
+
+parser.add_argument('--psi_param', type=float, default=1.0,
+                    help='Sigma if GAUSSIAN.')
+
+parser.add_argument('--psi_scale', type=float, default=1.0,
+                    help='Scale of PSI function.')
+
 _NUM_CLASSES = 21
 
 
@@ -68,6 +77,9 @@ def main(unused_argv):
           'pre_trained_model': None,
           'batch_norm_decay': None,
           'num_classes': _NUM_CLASSES,
+          'psi_type': FLAGS.psi_type,
+          'psi_param': FLAGS.psi_param,
+          'psi_scale': FLAGS.psi_scale
       })
 
   examples = dataset_util.read_examples_list(FLAGS.infer_data_list)

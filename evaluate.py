@@ -41,6 +41,15 @@ parser.add_argument('--output_stride', type=int, default=16,
                     choices=[8, 16],
                     help='Output stride for DeepLab v3. Currently 8 or 16 is supported.')
 
+parser.add_argument('--psi_type', type=str, default='ZERO',
+                    help='Options: ZERO, ONES, GAUSSIAN, SOBEL')
+
+parser.add_argument('--psi_param', type=float, default=1.0,
+                    help='Sigma if GAUSSIAN.')
+
+parser.add_argument('--psi_scale', type=float, default=1.0,
+                    help='Scale of PSI function.')
+
 _NUM_CLASSES = 21
 
 
@@ -65,7 +74,10 @@ def main(unused_argv):
           'pre_trained_model': None,
           'batch_norm_decay': None,
           'num_classes': _NUM_CLASSES,
-          'freeze_batch_norm': True
+          'freeze_batch_norm': True,
+          'psi_type': FLAGS.psi_type,
+          'psi_param': FLAGS.psi_param,
+          'psi_scale': FLAGS.psi_scale
       }).predictions
 
   # Manually load the latest checkpoint
